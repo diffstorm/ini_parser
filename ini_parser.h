@@ -74,32 +74,27 @@ bool ini_getValue(const ini_context_t *ctx, const char *section, const char *key
 
 static void trimWhitespace(char *str)
 {
-    if(!str)
+    if(!str || *str == '\0')
     {
         return;
     }
 
-    char *end;
+    char *start = str;
 
-    while(isspace((unsigned char)*str))
+    while(isspace((unsigned char)*start))
     {
-        str++;
+        start++;
     }
 
-    if(*str == '\0')
-    {
-        *str = '\0';
-        return;
-    }
+    char *end = str + strlen(str) - 1;
 
-    end = str + strlen(str) - 1;
-
-    while(end > str && isspace((unsigned char)*end))
+    while(end > start && isspace((unsigned char)*end))
     {
         end--;
     }
 
-    *(end + 1) = '\0';
+    memmove(str, start, end - start + 1);
+    str[end - start + 1] = '\0';
 }
 
 static ini_linetype_t parseLine(const char *line, char *section, char *key, char *value)
@@ -186,7 +181,7 @@ static ini_linetype_t parseLine(const char *line, char *section, char *key, char
 
 bool ini_initialize(ini_context_t *ctx, const char *content, size_t length)
 {
-    if(!ctx || !content)
+    if(!ctx || !content || length == 0)
     {
         return false;
     }
@@ -215,14 +210,17 @@ bool ini_initialize(ini_context_t *ctx, const char *content, size_t length)
 
         size_t len = ptr - start;
 
-        if(len >= INI_MAX_LINE_LENGTH)
+        if(len > 0 && start[len - 1] == '\r')
         {
-            len = INI_MAX_LINE_LENGTH - 1;
+            len--;
         }
 
+        len = (len < INI_MAX_LINE_LENGTH - 1) ? len : INI_MAX_LINE_LENGTH - 1;
         memcpy(line, start, len);
         line[len] = '\0';
-        char section[INI_MAX_LINE_LENGTH], key[INI_MAX_LINE_LENGTH], value[INI_MAX_LINE_LENGTH];
+        char section[INI_MAX_LINE_LENGTH] = {0};
+        char key[INI_MAX_LINE_LENGTH] = {0};
+        char value[INI_MAX_LINE_LENGTH] = {0};
         ini_linetype_t type = parseLine(line, section, key, value);
 
         if(type == INI_LINE_SECTION)
@@ -237,8 +235,24 @@ bool ini_initialize(ini_context_t *ctx, const char *content, size_t length)
 
             strncpy(newSection->name, section, INI_MAX_LINE_LENGTH);
             newSection->keyValues = NULL;
-            newSection->next = ctx->sections;
-            ctx->sections = newSection;
+            newSection->next = NULL;
+
+            if(!ctx->sections)
+            {
+                ctx->sections = newSection;
+            }
+            else
+            {
+                ini_section_t *last = ctx->sections;
+
+                while(last->next)
+                {
+                    last = last->next;
+                }
+
+                last->next = newSection;
+            }
+
             currentSection = newSection;
         }
         else if(type == INI_LINE_KEY_VALUE && currentSection)
@@ -253,8 +267,23 @@ bool ini_initialize(ini_context_t *ctx, const char *content, size_t length)
 
             strncpy(newKv->key, key, INI_MAX_LINE_LENGTH);
             strncpy(newKv->value, value, INI_MAX_LINE_LENGTH);
-            newKv->next = currentSection->keyValues;
-            currentSection->keyValues = newKv;
+            newKv->next = NULL;
+
+            if(!currentSection->keyValues)
+            {
+                currentSection->keyValues = newKv;
+            }
+            else
+            {
+                ini_keyvalue_t *last = currentSection->keyValues;
+
+                while(last->next)
+                {
+                    last = last->next;
+                }
+
+                last->next = newKv;
+            }
         }
 
         if(*ptr)
@@ -297,7 +326,7 @@ void ini_cleanup(ini_context_t *ctx)
 
 bool ini_hasSection(const ini_context_t *ctx, const char *section)
 {
-    if(!ctx)
+    if(!ctx || !section)
     {
         return false;
     }
@@ -319,7 +348,7 @@ bool ini_hasSection(const ini_context_t *ctx, const char *section)
 
 bool ini_hasKey(const ini_context_t *ctx, const char *section, const char *key)
 {
-    if(!ctx)
+    if(!ctx || !section || !key)
     {
         return false;
     }
@@ -360,12 +389,13 @@ bool ini_hasValue(const ini_context_t *ctx, const char *section, const char *key
 bool ini_getValue(const ini_context_t *ctx, const char *section, const char *key,
                   char *value, size_t maxLen)
 {
-    if(!ctx || !value || maxLen == 0)
+    if(!ctx || !section || !key || !value || maxLen == 0)
     {
         return false;
     }
 
     ini_section_t *current = ctx->sections;
+    bool found = false;
 
     while(current)
     {
@@ -379,13 +409,13 @@ bool ini_getValue(const ini_context_t *ctx, const char *section, const char *key
                 {
                     strncpy(value, kv->value, maxLen);
                     value[maxLen - 1] = '\0';
-                    return true;
+                    found = true;
                 }
 
                 kv = kv->next;
             }
 
-            return false;
+            return found;
         }
 
         current = current->next;

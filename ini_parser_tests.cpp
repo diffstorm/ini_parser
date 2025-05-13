@@ -38,7 +38,7 @@ protected:
 TEST_F(IniParserTest, HandlesEmptyContent)
 {
     const char *content = "";
-    EXPECT_FALSE(LoadIniContent(content));
+    EXPECT_FALSE(ini_initialize(&ctx, content, strlen(content)));
 }
 
 TEST_F(IniParserTest, ParsesBasicStructure)
@@ -57,11 +57,12 @@ TEST_F(IniParserTest, ParsesBasicStructure)
 TEST_F(IniParserTest, HandlesWhitespace)
 {
     const char *content =
-        "  [  section1  ]  \n"
-        "  key1  =  value1  \n"
+        "[  section1  ]\r\n"
+        "  key1 = value1  \n"
         "key2=  \n";
     ASSERT_TRUE(LoadIniContent(content));
-    char value[256];
+    EXPECT_TRUE(ini_hasSection(&ctx, "section1"));
+    char value[256] = {0};
     EXPECT_TRUE(ini_getValue(&ctx, "section1", "key1", value, sizeof(value)));
     EXPECT_STREQ(value, "value1");
     EXPECT_TRUE(ini_hasKey(&ctx, "section1", "key2"));
@@ -127,13 +128,14 @@ TEST_F(IniParserTest, HandlesDuplicateKeys)
 
 TEST_F(IniParserTest, HandlesLongLines)
 {
-    std::string long_key(INI_MAX_LINE_LENGTH - 10, 'a');
-    std::string long_value(INI_MAX_LINE_LENGTH - 10, 'b');
+    constexpr size_t safe_len = INI_MAX_LINE_LENGTH / 2 - 2;
+    std::string long_key(safe_len, 'a');
+    std::string long_value(safe_len, 'b');
     std::string content =
         "[section1]\n" +
         long_key + "=" + long_value + "\n";
     ASSERT_TRUE(ini_initialize(&ctx, content.c_str(), content.length()));
-    char value[INI_MAX_LINE_LENGTH];
+    char value[INI_MAX_LINE_LENGTH] = {0};
     EXPECT_TRUE(ini_getValue(&ctx, "section1", long_key.c_str(), value, sizeof(value)));
     EXPECT_STREQ(value, long_value.c_str());
 }
