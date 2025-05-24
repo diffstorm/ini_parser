@@ -343,6 +343,120 @@ key3 = 3
     EXPECT_EQ(kv->next, nullptr) << "Extra unexpected keys in section";
 }
 
+TEST_F(IniParserTest, StreamingAPIParsing) {
+    const char* content = R"INI(
+; Test config
+[Section1]
+key1 = value1
+key2 = value2
+
+[Section2]
+# Invalid line
+key3 = value3
+invalid_line
+key4 = value4
+)INI";
+
+    typedef struct {
+        std::vector<std::string> sections;
+        std::map<std::string, std::string> keyValues;
+        std::vector<std::string> comments;
+        std::vector<std::string> errors;
+        bool aborted;
+    } StreamTestState;
+
+    StreamTestState state{};
+    state.aborted = false;
+
+    auto handler = [](ini_eventtype_t type, 
+                     const char* section,
+                     const char* key,
+                     const char* value,
+                     void* userdata) -> bool {
+        StreamTestState* s = static_cast<StreamTestState*>(userdata);
+        
+        switch(type) {
+            case INI_EVENT_SECTION:
+                s->sections.push_back(section ? section : "");
+                break;
+                
+            case INI_EVENT_KEY_VALUE:
+                if(section && key && value) {
+                    std::string fullKey = std::string(section) + "." + key;
+                    s->keyValues[fullKey] = value;
+                }
+                break;
+                
+            case INI_EVENT_COMMENT:
+                if(value) s->comments.push_back(value);
+                break;
+                
+            case INI_EVENT_ERROR:
+                if(value) s->errors.push_back(value);
+                s->aborted = true;
+                return false;
+                
+            default: break;
+        }
+        return true;
+    };
+
+    size_t length = strlen(content);
+    bool result = ini_parse_stream(content, length, handler, &state);
+
+    EXPECT_FALSE(result);
+    EXPECT_TRUE(state.aborted);
+    ASSERT_EQ(state.sections.size(), 2);
+    ASSERT_EQ(state.keyValues.size(), 3);
+    ASSERT_EQ(state.comments.size(), 2);
+    ASSERT_EQ(state.errors.size(), 1);
+}
+
+TEST_F(IniParserTest, StreamingAPIEdgeCases) {
+    // Test empty content
+    {
+        bool called = false;
+        auto handler = [](ini_eventtype_t, const char*, const char*, const char*, void* userdata) {
+            if(userdata) *static_cast<bool*>(userdata) = true;
+            return true;
+        };
+        EXPECT_TRUE(ini_parse_stream("", 0, handler, &called));
+        EXPECT_FALSE(called);
+    }
+
+    // Test comment-only file
+    {
+        struct CommentCounter { int count = 0; };
+        CommentCounter counter;
+        
+        auto handler = [](ini_eventtype_t type, const char*, const char*, const char* value, void* userdata) {
+            if(type == INI_EVENT_COMMENT && userdata) {
+                static_cast<CommentCounter*>(userdata)->count++;
+            }
+            return true;
+        };
+        
+        const char* content = "; comment1\n# comment2\n";
+        EXPECT_TRUE(ini_parse_stream(content, strlen(content), handler, &counter));
+        EXPECT_EQ(counter.count, 2);
+    }
+
+    // Test handler abort
+    {
+        struct Counter { int value = 0; };
+        Counter counter;
+        
+        auto handler = [](ini_eventtype_t, const char*, const char*, const char*, void* userdata) {
+            if(userdata) static_cast<Counter*>(userdata)->value++;
+            return static_cast<Counter*>(userdata)->value < 2;
+        };
+        
+        const char* content = "[s1]\nkey1=1\nkey2=2\n";
+        EXPECT_FALSE(ini_parse_stream(content, strlen(content), handler, &counter));
+        EXPECT_EQ(counter.value, 2);
+    }
+}
+
 int main(int argc, char **argv)
 {
     testing::InitGoogleTest(&argc, argv);

@@ -61,6 +61,16 @@ typedef struct
     ini_section_t *sections;
 } ini_context_t;
 
+typedef enum
+{
+    INI_EVENT_SECTION,
+    INI_EVENT_KEY_VALUE,
+    INI_EVENT_COMMENT,
+    INI_EVENT_ERROR
+} ini_eventtype_t;
+
+typedef bool (*ini_handler)(ini_eventtype_t type, const char *section, const char *key, const char *value, void *userdata);
+
 bool ini_initialize(ini_context_t *ctx, const char *content, size_t length);
 void ini_cleanup(ini_context_t *ctx);
 bool ini_hasSection(const ini_context_t *ctx, const char *section);
@@ -68,6 +78,7 @@ bool ini_hasKey(const ini_context_t *ctx, const char *section, const char *key);
 bool ini_hasValue(const ini_context_t *ctx, const char *section, const char *key);
 bool ini_getValue(const ini_context_t *ctx, const char *section, const char *key,
                   char *value, size_t maxLen);
+bool ini_parse_stream(const char *content, size_t length, ini_handler handler, void *userdata);
 
 #ifdef __cplusplus
 }
@@ -453,6 +464,92 @@ bool ini_getValue(const ini_context_t *ctx, const char *section, const char *key
     }
 
     return false;
+}
+
+bool ini_parse_stream(const char *content, size_t length, ini_handler handler, void *userdata)
+{
+    if(!content || !handler)
+    {
+        return false;
+    }
+
+    const char *ptr = content;
+    const char *end = content + length;
+    char line[INI_MAX_LINE_LENGTH];
+    char current_section[INI_MAX_LINE_LENGTH] = "";
+
+    while(ptr < end)
+    {
+        // Extract line
+        const char *line_start = ptr;
+
+        while(ptr < end && *ptr != '\n' && *ptr != '\r')
+        {
+            ptr++;
+        }
+
+        size_t line_len = ptr - line_start;
+
+        // Handle line endings
+        while(ptr < end && (*ptr == '\n' || *ptr == '\r'))
+        {
+            ptr++;
+        }
+
+        // Process line
+        if(line_len > 0)
+        {
+            line_len = line_len < INI_MAX_LINE_LENGTH - 1 ? line_len : INI_MAX_LINE_LENGTH - 1;
+            memcpy(line, line_start, line_len);
+            line[line_len] = '\0';
+            char section[INI_MAX_LINE_LENGTH] = "";
+            char key[INI_MAX_LINE_LENGTH] = "";
+            char value[INI_MAX_LINE_LENGTH] = "";
+            ini_linetype_t type = parseLine(line, section, key, value);
+
+            switch(type)
+            {
+                case INI_LINE_SECTION:
+                    strncpy(current_section, section, INI_MAX_LINE_LENGTH);
+
+                    if(!handler(INI_EVENT_SECTION, current_section, NULL, NULL, userdata))
+                    {
+                        return false;
+                    }
+
+                    break;
+
+                case INI_LINE_KEY_VALUE:
+                    if(!handler(INI_EVENT_KEY_VALUE, current_section, key, value, userdata))
+                    {
+                        return false;
+                    }
+
+                    break;
+
+                case INI_LINE_COMMENT:
+                    if(!handler(INI_EVENT_COMMENT, NULL, NULL, line, userdata))
+                    {
+                        return false;
+                    }
+
+                    break;
+
+                case INI_LINE_INVALID:
+                    if(!handler(INI_EVENT_ERROR, NULL, NULL, line, userdata))
+                    {
+                        return false;
+                    }
+
+                    break;
+
+                default:
+                    break;
+            }
+        }
+    }
+
+    return true;
 }
 
 #endif /* INI_PARSER_IMPLEMENTATION */
