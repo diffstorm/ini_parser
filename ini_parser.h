@@ -24,6 +24,14 @@ extern "C" {
 #define INI_MAX_LINE_LENGTH 256
 #endif
 
+#ifdef INI_ENABLE_CASE_SENSITIVITY
+#define STRCOMPARE(x, y) strcmp(x, y)
+#else
+#define STRCOMPARE(x, y) strcasecmp(x, y)
+#endif
+
+#define INI_ALLOW_EMPTY_VALUES
+
 typedef enum
 {
     INI_LINE_EMPTY,
@@ -93,8 +101,51 @@ static void trimWhitespace(char *str)
         end--;
     }
 
-    memmove(str, start, end - start + 1);
-    str[end - start + 1] = '\0';
+    size_t len = (end >= start) ? (end - start + 1) : 0;
+
+    if(len > 0)
+    {
+        memmove(str, start, len);
+    }
+
+    str[len] = '\0';
+}
+
+static void unescapeString(char *str)
+{
+    char *src = str;
+    char *dst = str;
+
+    while(*src)
+    {
+        if(*src == '\\')
+        {
+            src++;
+
+            switch(*src)
+            {
+                case '=':
+                    *dst++ = '=';
+                    break;
+
+                case '\\':
+                    *dst++ = '\\';
+                    break;
+
+                default:
+                    *dst++ = '\\';
+                    *dst++ = *src;
+            }
+        }
+        else
+        {
+            *dst++ = *src;
+        }
+
+        src++;
+    }
+
+    *dst = '\0';
 }
 
 static ini_linetype_t parseLine(const char *line, char *section, char *key, char *value)
@@ -118,7 +169,7 @@ static ini_linetype_t parseLine(const char *line, char *section, char *key, char
     {
         const char *start = ++line;
 
-        while(*line && *line != ']')
+        while(*line && *line != ']' && *line != '\n')
         {
             line++;
         }
@@ -153,7 +204,14 @@ static ini_linetype_t parseLine(const char *line, char *section, char *key, char
         keyLen = (keyLen < INI_MAX_LINE_LENGTH - 1) ? keyLen : INI_MAX_LINE_LENGTH - 1;
         memcpy(key, keyStart, keyLen);
         key[keyLen] = '\0';
+        unescapeString(key);
         trimWhitespace(key);
+
+        if(key[0] == '\0')
+        {
+            return INI_LINE_INVALID;
+        }
+
         line++;
 
         while(isspace((unsigned char)*line))
@@ -172,7 +230,23 @@ static ini_linetype_t parseLine(const char *line, char *section, char *key, char
         valueLen = (valueLen < INI_MAX_LINE_LENGTH - 1) ? valueLen : INI_MAX_LINE_LENGTH - 1;
         memcpy(value, valueStart, valueLen);
         value[valueLen] = '\0';
+        unescapeString(value);
+        char *comment = strpbrk(value, ";#");
+
+        if(comment)
+        {
+            *comment = '\0';
+        }
+
         trimWhitespace(value);
+#ifndef INI_ALLOW_EMPTY_VALUES
+
+        if(value[0] == '\0')
+        {
+            return INI_LINE_INVALID;
+        }
+
+#endif
         return INI_LINE_KEY_VALUE;
     }
 
@@ -186,7 +260,7 @@ bool ini_initialize(ini_context_t *ctx, const char *content, size_t length)
         return false;
     }
 
-    ctx->content = malloc(length + 1);
+    ctx->content = calloc(1, length + 1);
 
     if(!ctx->content)
     {
@@ -195,6 +269,7 @@ bool ini_initialize(ini_context_t *ctx, const char *content, size_t length)
 
     memcpy(ctx->content, content, length);
     ctx->content[length] = '\0';
+    ctx->sections = NULL;
     ini_section_t *currentSection = NULL;
     char line[INI_MAX_LINE_LENGTH];
     const char *ptr = ctx->content;
@@ -225,7 +300,7 @@ bool ini_initialize(ini_context_t *ctx, const char *content, size_t length)
 
         if(type == INI_LINE_SECTION)
         {
-            ini_section_t *newSection = malloc(sizeof(ini_section_t));
+            ini_section_t *newSection = calloc(1, sizeof(ini_section_t));
 
             if(!newSection)
             {
@@ -257,7 +332,7 @@ bool ini_initialize(ini_context_t *ctx, const char *content, size_t length)
         }
         else if(type == INI_LINE_KEY_VALUE && currentSection)
         {
-            ini_keyvalue_t *newKv = malloc(sizeof(ini_keyvalue_t));
+            ini_keyvalue_t *newKv = calloc(1, sizeof(ini_keyvalue_t));
 
             if(!newKv)
             {
@@ -265,8 +340,10 @@ bool ini_initialize(ini_context_t *ctx, const char *content, size_t length)
                 return false;
             }
 
-            strncpy(newKv->key, key, INI_MAX_LINE_LENGTH);
-            strncpy(newKv->value, value, INI_MAX_LINE_LENGTH);
+            strncpy(newKv->key, key, INI_MAX_LINE_LENGTH - 1);
+            newKv->key[INI_MAX_LINE_LENGTH - 1] = '\0';
+            strncpy(newKv->value, value, INI_MAX_LINE_LENGTH - 1);
+            newKv->value[INI_MAX_LINE_LENGTH - 1] = '\0';
             newKv->next = NULL;
 
             if(!currentSection->keyValues)
@@ -335,7 +412,7 @@ bool ini_hasSection(const ini_context_t *ctx, const char *section)
 
     while(current)
     {
-        if(strcasecmp(current->name, section) == 0)
+        if(STRCOMPARE(current->name, section) == 0)
         {
             return true;
         }
@@ -357,13 +434,13 @@ bool ini_hasKey(const ini_context_t *ctx, const char *section, const char *key)
 
     while(current)
     {
-        if(strcasecmp(current->name, section) == 0)
+        if(STRCOMPARE(current->name, section) == 0)
         {
             ini_keyvalue_t *kv = current->keyValues;
 
             while(kv)
             {
-                if(strcasecmp(kv->key, key) == 0)
+                if(STRCOMPARE(kv->key, key) == 0)
                 {
                     return true;
                 }
@@ -399,13 +476,13 @@ bool ini_getValue(const ini_context_t *ctx, const char *section, const char *key
 
     while(current)
     {
-        if(strcasecmp(current->name, section) == 0)
+        if(STRCOMPARE(current->name, section) == 0)
         {
             ini_keyvalue_t *kv = current->keyValues;
 
             while(kv)
             {
-                if(strcasecmp(kv->key, key) == 0)
+                if(STRCOMPARE(kv->key, key) == 0)
                 {
                     strncpy(value, kv->value, maxLen);
                     value[maxLen - 1] = '\0';

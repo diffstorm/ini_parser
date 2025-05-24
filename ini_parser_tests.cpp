@@ -62,7 +62,7 @@ TEST_F(IniParserTest, HandlesWhitespace)
         "key2=  \n";
     ASSERT_TRUE(LoadIniContent(content));
     EXPECT_TRUE(ini_hasSection(&ctx, "section1"));
-    char value[256] = {0};
+    char value[INI_MAX_LINE_LENGTH] = {0};
     EXPECT_TRUE(ini_getValue(&ctx, "section1", "key1", value, sizeof(value)));
     EXPECT_STREQ(value, "value1");
     EXPECT_TRUE(ini_hasKey(&ctx, "section1", "key2"));
@@ -82,9 +82,9 @@ TEST_F(IniParserTest, HandlesCommentsAndEmptyLines)
     ASSERT_TRUE(LoadIniContent(content));
     EXPECT_TRUE(ini_hasSection(&ctx, "section1"));
     EXPECT_TRUE(ini_hasSection(&ctx, "section2"));
-    char value[256];
+    char value[INI_MAX_LINE_LENGTH];
     EXPECT_TRUE(ini_getValue(&ctx, "section1", "key1", value, sizeof(value)));
-    EXPECT_STREQ(value, "value1 ; inline comment");
+    EXPECT_STREQ(value, "value1");
 }
 
 TEST_F(IniParserTest, CaseInsensitivity)
@@ -95,7 +95,7 @@ TEST_F(IniParserTest, CaseInsensitivity)
     ASSERT_TRUE(LoadIniContent(content));
     EXPECT_TRUE(ini_hasSection(&ctx, "sEcTiOn1"));
     EXPECT_TRUE(ini_hasKey(&ctx, "SECTION1", "kEy1"));
-    char value[256];
+    char value[INI_MAX_LINE_LENGTH];
     EXPECT_TRUE(ini_getValue(&ctx, "section1", "KEY1", value, sizeof(value)));
     EXPECT_STREQ(value, "Value1");
 }
@@ -107,9 +107,12 @@ TEST_F(IniParserTest, HandlesSpecialCharacters)
         "key$%^=value&*()\n"
         "escaped_key=\"quoted value\"\n";
     ASSERT_TRUE(LoadIniContent(content));
-    char value[256];
+    char value[INI_MAX_LINE_LENGTH];
+    EXPECT_TRUE(ini_hasSection(&ctx, "section!@#"));
+    EXPECT_TRUE(ini_hasKey(&ctx, "section!@#", "key$%^"));
     EXPECT_TRUE(ini_getValue(&ctx, "section!@#", "key$%^", value, sizeof(value)));
     EXPECT_STREQ(value, "value&*()");
+    EXPECT_TRUE(ini_hasKey(&ctx, "section!@#", "escaped_key"));
     EXPECT_TRUE(ini_getValue(&ctx, "section!@#", "escaped_key", value, sizeof(value)));
     EXPECT_STREQ(value, "\"quoted value\"");
 }
@@ -121,7 +124,7 @@ TEST_F(IniParserTest, HandlesDuplicateKeys)
         "key1=first\n"
         "key1=second\n";
     ASSERT_TRUE(LoadIniContent(content));
-    char value[256];
+    char value[INI_MAX_LINE_LENGTH];
     EXPECT_TRUE(ini_getValue(&ctx, "section1", "key1", value, sizeof(value)));
     EXPECT_STREQ(value, "second");
 }
@@ -160,7 +163,7 @@ TEST_F(IniParserTest, InvalidArguments)
     // Null section/key
     EXPECT_FALSE(ini_hasSection(&ctx, nullptr));
     EXPECT_FALSE(ini_hasKey(&ctx, "section1", nullptr));
-    char value[256];
+    char value[INI_MAX_LINE_LENGTH];
     EXPECT_FALSE(ini_getValue(&ctx, "section1", "key1", nullptr, sizeof(value)));
     EXPECT_FALSE(ini_getValue(&ctx, "section1", "key1", value, 0));
 }
@@ -177,7 +180,7 @@ TEST_F(IniParserTest, MalformedLines)
     ASSERT_TRUE(LoadIniContent(content));
     EXPECT_TRUE(ini_hasSection(&ctx, "section2"));
     EXPECT_FALSE(ini_hasSection(&ctx, "section1"));
-    char value[256];
+    char value[INI_MAX_LINE_LENGTH];
     EXPECT_TRUE(ini_getValue(&ctx, "section2", "key3", value, sizeof(value)));
     EXPECT_STREQ(value, "value3");
 }
@@ -205,7 +208,7 @@ TEST_F(IniParserTest, MultiSectionOperations)
         "[sectionB]\n"
         "key1=value2\n";
     ASSERT_TRUE(LoadIniContent(content));
-    char value[256];
+    char value[INI_MAX_LINE_LENGTH];
     EXPECT_TRUE(ini_getValue(&ctx, "sectionA", "key1", value, sizeof(value)));
     EXPECT_STREQ(value, "value1");
     EXPECT_TRUE(ini_getValue(&ctx, "sectionB", "key1", value, sizeof(value)));
