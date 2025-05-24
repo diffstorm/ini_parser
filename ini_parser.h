@@ -111,43 +111,6 @@ static void trimWhitespace(char *str)
     str[len] = '\0';
 }
 
-static void unescapeString(char *str)
-{
-    char *src = str;
-    char *dst = str;
-
-    while(*src)
-    {
-        if(*src == '\\')
-        {
-            src++;
-
-            switch(*src)
-            {
-                case '=':
-                    *dst++ = '=';
-                    break;
-
-                case '\\':
-                    *dst++ = '\\';
-                    break;
-
-                default:
-                    *dst++ = '\\';
-                    *dst++ = *src;
-            }
-        }
-        else
-        {
-            *dst++ = *src;
-        }
-
-        src++;
-    }
-
-    *dst = '\0';
-}
-
 static ini_linetype_t parseLine(const char *line, char *section, char *key, char *value)
 {
     while(isspace((unsigned char)*line))
@@ -204,7 +167,6 @@ static ini_linetype_t parseLine(const char *line, char *section, char *key, char
         keyLen = (keyLen < INI_MAX_LINE_LENGTH - 1) ? keyLen : INI_MAX_LINE_LENGTH - 1;
         memcpy(key, keyStart, keyLen);
         key[keyLen] = '\0';
-        unescapeString(key);
         trimWhitespace(key);
 
         if(key[0] == '\0')
@@ -230,14 +192,6 @@ static ini_linetype_t parseLine(const char *line, char *section, char *key, char
         valueLen = (valueLen < INI_MAX_LINE_LENGTH - 1) ? valueLen : INI_MAX_LINE_LENGTH - 1;
         memcpy(value, valueStart, valueLen);
         value[valueLen] = '\0';
-        unescapeString(value);
-        char *comment = strpbrk(value, ";#");
-
-        if(comment)
-        {
-            *comment = '\0';
-        }
-
         trimWhitespace(value);
 #ifndef INI_ALLOW_EMPTY_VALUES
 

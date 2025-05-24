@@ -84,7 +84,7 @@ TEST_F(IniParserTest, HandlesCommentsAndEmptyLines)
     EXPECT_TRUE(ini_hasSection(&ctx, "section2"));
     char value[INI_MAX_LINE_LENGTH];
     EXPECT_TRUE(ini_getValue(&ctx, "section1", "key1", value, sizeof(value)));
-    EXPECT_STREQ(value, "value1");
+    EXPECT_STREQ(value, "value1 ; inline comment");
 }
 
 TEST_F(IniParserTest, CaseInsensitivity)
@@ -224,6 +224,123 @@ TEST_F(IniParserTest, KeyWithoutSection)
     ASSERT_TRUE(LoadIniContent(content));
     EXPECT_FALSE(ini_hasKey(&ctx, "", "key1"));
     EXPECT_TRUE(ini_hasKey(&ctx, "section1", "key2"));
+}
+
+TEST_F(IniParserTest, ComprehensiveParsing)
+{
+    const char *content = R"INI(
+[Basic_Types]
+string = Hello World
+integer = 42
+float = 3.14159
+true = true
+false = false
+empty = 
+
+[Whitespace]
+  spaced_key   =   value with spaces  
+	tabs_key	=	value	with	tabs	
+mixed_whitespace 	 =  	 complex   example   
+
+[Duplicate_Keys]
+duplicate = first
+duplicate = second
+
+[Special_Characters]
+special_chars = "!@#$%^&*()_+-=[]{}|;':\",./<>?"
+quoted = "quoted value"
+
+[Empty_Section]
+
+[Comments]
+# Hash comment
+; Semicolon comment
+key = value
+
+[Order_Verification]
+key1 = 1
+key2 = 2
+key3 = 3
+)INI";
+
+    ASSERT_TRUE(LoadIniContent(content));
+
+    // Basic Types Verification
+    char buffer[INI_MAX_LINE_LENGTH];
+    
+    // String
+    EXPECT_TRUE(ini_getValue(&ctx, "Basic_Types", "string", buffer, sizeof(buffer)));
+    EXPECT_STREQ(buffer, "Hello World");
+    
+    // Integer
+    EXPECT_TRUE(ini_getValue(&ctx, "Basic_Types", "integer", buffer, sizeof(buffer)));
+    EXPECT_STREQ(buffer, "42");
+    
+    // Float
+    EXPECT_TRUE(ini_getValue(&ctx, "Basic_Types", "float", buffer, sizeof(buffer)));
+    EXPECT_STREQ(buffer, "3.14159");
+    
+    // Booleans
+    EXPECT_TRUE(ini_getValue(&ctx, "Basic_Types", "true", buffer, sizeof(buffer)));
+    EXPECT_STREQ(buffer, "true");
+    EXPECT_TRUE(ini_getValue(&ctx, "Basic_Types", "false", buffer, sizeof(buffer)));
+    EXPECT_STREQ(buffer, "false");
+    
+    // Empty value
+    EXPECT_TRUE(ini_hasKey(&ctx, "Basic_Types", "empty"));
+    EXPECT_FALSE(ini_hasValue(&ctx, "Basic_Types", "empty"));
+
+    // Whitespace Handling
+    EXPECT_TRUE(ini_getValue(&ctx, "Whitespace", "spaced_key", buffer, sizeof(buffer)));
+    EXPECT_STREQ(buffer, "value with spaces");
+    
+    EXPECT_TRUE(ini_getValue(&ctx, "Whitespace", "tabs_key", buffer, sizeof(buffer)));
+    EXPECT_STREQ(buffer, "value	with	tabs");
+    
+    EXPECT_TRUE(ini_getValue(&ctx, "Whitespace", "mixed_whitespace", buffer, sizeof(buffer)));
+    EXPECT_STREQ(buffer, "complex   example");
+
+    // Duplicate Keys
+    EXPECT_TRUE(ini_getValue(&ctx, "Duplicate_Keys", "duplicate", buffer, sizeof(buffer)));
+    EXPECT_STREQ(buffer, "second");
+
+    // Special Characters
+    EXPECT_TRUE(ini_getValue(&ctx, "Special_Characters", "special_chars", buffer, sizeof(buffer)));
+	EXPECT_STREQ(buffer, "\"!@#$%^&*()_+-=[]{}|;':\\\",./<>?\"");
+    
+    EXPECT_TRUE(ini_getValue(&ctx, "Special_Characters", "quoted", buffer, sizeof(buffer)));
+    EXPECT_STREQ(buffer, "\"quoted value\"");
+
+    // Empty Section
+    EXPECT_TRUE(ini_hasSection(&ctx, "Empty_Section"));
+
+    // Comments
+    EXPECT_TRUE(ini_getValue(&ctx, "Comments", "key", buffer, sizeof(buffer)));
+    EXPECT_STREQ(buffer, "value");
+
+    // Order Preservation
+    ini_section_t* section = ctx.sections;
+    while(section && STRCOMPARE(section->name, "Order_Verification") != 0) {
+        section = section->next;
+    }
+    ASSERT_NE(section, nullptr) << "Order_Verification section not found";
+    
+    ini_keyvalue_t* kv = section->keyValues;
+    ASSERT_NE(kv, nullptr) << "No keys in Order_Verification";
+    EXPECT_STREQ(kv->key, "key1");
+    EXPECT_STREQ(kv->value, "1");
+    
+    kv = kv->next;
+    ASSERT_NE(kv, nullptr) << "Missing key2";
+    EXPECT_STREQ(kv->key, "key2");
+    EXPECT_STREQ(kv->value, "2");
+    
+    kv = kv->next;
+    ASSERT_NE(kv, nullptr) << "Missing key3";
+    EXPECT_STREQ(kv->key, "key3");
+    EXPECT_STREQ(kv->value, "3");
+    
+    EXPECT_EQ(kv->next, nullptr) << "Extra unexpected keys in section";
 }
 
 int main(int argc, char **argv)
