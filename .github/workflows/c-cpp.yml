@@ -72,3 +72,24 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
         file: coverage.info
         fail_ci_if_error: false
+
+  valgrind:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Valgrind
+      run: sudo apt-get install -y valgrind
+      
+    - name: Build Debug version
+      run: |
+        cmake -B build-debug -DCMAKE_BUILD_TYPE=Debug
+        cmake --build build-debug --target ini_parser_tests
+        
+    - name: Valgrind memory check
+      run: |
+        valgrind --leak-check=full \
+                 --track-origins=yes \
+                 --error-exitcode=1 \
+                 ./build-debug/ini_parser_tests
