@@ -155,6 +155,12 @@ static ini_linetype_t parseLine(const char *line, char *section, char *key, char
             memcpy(section, start, len);
             section[len] = '\0';
             trimWhitespace(section);
+
+            if(section[0] == '\0')
+            {
+                return INI_LINE_INVALID;
+            }
+
             return INI_LINE_SECTION;
         }
 
@@ -245,20 +251,19 @@ bool ini_initialize(ini_context_t *ctx, const char *content, size_t length)
     while(*ptr)
     {
         const char *start = ptr;
+        size_t len = 0;
 
-        while(*ptr && *ptr != '\n')
+        while(*ptr && *ptr != '\n' && *ptr != '\r' && len < INI_MAX_LINE_LENGTH)
         {
             ptr++;
+            len++;
         }
-
-        size_t len = ptr - start;
 
         if(len > 0 && start[len - 1] == '\r')
         {
             len--;
         }
 
-        len = (len < INI_MAX_LINE_LENGTH - 1) ? len : INI_MAX_LINE_LENGTH - 1;
         memcpy(line, start, len);
         line[len] = '\0';
         char section[INI_MAX_LINE_LENGTH] = {0};
@@ -335,6 +340,11 @@ bool ini_initialize(ini_context_t *ctx, const char *content, size_t length)
         }
 
         if(*ptr)
+        {
+            ptr++;
+        }
+
+        while(*ptr == '\r' || *ptr == '\n')
         {
             ptr++;
         }

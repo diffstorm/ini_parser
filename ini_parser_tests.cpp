@@ -235,11 +235,86 @@ TEST_F(IniParserTest, HandlesCRLFFiles)
     EXPECT_STREQ(value, "value");
 }
 
+TEST_F(IniParserTest, HandlesCRLineEndings)
+{
+    const char *content = "[section]\rkey=value\r";
+    ASSERT_TRUE(LoadIniContent(content));
+    char value[INI_MAX_LINE_LENGTH];
+    EXPECT_TRUE(ini_getValue(&ctx, "section", "key", value, sizeof(value)));
+    EXPECT_STREQ(value, "value");
+}
+
+TEST_F(IniParserTest, HandlesMixedLineEndings)
+{
+    const char *content =
+        "[crlf]\r\n"
+        "key1=value1\r\n"
+        "[lf]\n"
+        "key2=value2\n"
+        "[cr]\r"
+        "key3=value3\r";
+    ASSERT_TRUE(LoadIniContent(content));
+    char value[INI_MAX_LINE_LENGTH];
+    EXPECT_TRUE(ini_getValue(&ctx, "crlf", "key1", value, sizeof(value)));
+    EXPECT_STREQ(value, "value1");
+    EXPECT_TRUE(ini_getValue(&ctx, "lf", "key2", value, sizeof(value)));
+    EXPECT_STREQ(value, "value2");
+    EXPECT_TRUE(ini_getValue(&ctx, "cr", "key3", value, sizeof(value)));
+    EXPECT_STREQ(value, "value3");
+}
+
+TEST_F(IniParserTest, HandlesMaxLengthLines)
+{
+    // Section: [aaaaa...] (INI_MAX_LINE_LENGTH - 3 chars)
+    const size_t section_len = INI_MAX_LINE_LENGTH - 3;
+    std::string section_name(section_len, 'a');
+    // Key & value: "key=value" within line limit
+    const size_t kv_len = (INI_MAX_LINE_LENGTH - 1) / 2 - 1; // Half for key, half for value
+    std::string key(kv_len, 'b');
+    std::string value(kv_len, 'c');
+    std::string content =
+        "[" + section_name + "]\n" +
+        key + "=" + value;
+    ASSERT_TRUE(ini_initialize(&ctx, content.c_str(), content.size()));
+    char result[INI_MAX_LINE_LENGTH];
+    EXPECT_TRUE(ini_getValue(&ctx, section_name.c_str(), key.c_str(), result, sizeof(result)));
+    EXPECT_STREQ(result, value.c_str());
+}
+
 TEST_F(IniParserTest, MaxLineLengthHandling)
 {
     std::string long_line(INI_MAX_LINE_LENGTH * 2, 'a');
     std::string content = "[section]\n" + long_line + "\n";
     ASSERT_TRUE(ini_initialize(&ctx, content.c_str(), content.size()));
+}
+
+TEST_F(IniParserTest, HandlesWhitespaceOnlySections)
+{
+    const char *content =
+        "[   ]\n"          // Invalid empty section
+        "[  valid  ]\n"    // Valid section
+        "key=value\n";
+    ASSERT_TRUE(LoadIniContent(content));
+    EXPECT_FALSE(ini_hasSection(&ctx, ""));
+    EXPECT_TRUE(ini_hasSection(&ctx, "valid"));
+}
+
+TEST_F(IniParserTest, HandlesCaseSensitivityWhenEnabled)
+{
+#ifdef INI_ENABLE_CASE_SENSITIVITY
+    const char *content = "[Section]\nKey=Value\n";
+    ASSERT_TRUE(LoadIniContent(content));
+    char value[INI_MAX_LINE_LENGTH];
+    EXPECT_FALSE(ini_getValue(&ctx, "section", "key", value, sizeof(value)));
+    EXPECT_TRUE(ini_getValue(&ctx, "Section", "Key", value, sizeof(value)));
+    EXPECT_STREQ(value, "Value");
+#endif
+}
+
+TEST_F(IniParserTest, DetectsUnclosedSectionHeaders)
+{
+    const char *content = "[section\nkey=value";
+    ASSERT_FALSE(LoadIniContent(content));
 }
 
 TEST_F(IniParserTest, MemorySafetyOnInvalidInput)
