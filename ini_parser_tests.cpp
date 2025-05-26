@@ -226,6 +226,33 @@ TEST_F(IniParserTest, KeyWithoutSection)
     EXPECT_TRUE(ini_hasKey(&ctx, "section1", "key2"));
 }
 
+TEST_F(IniParserTest, HandlesCRLFFiles)
+{
+    const char *content = "[section]\r\nkey=value\r\n";
+    ASSERT_TRUE(LoadIniContent(content));
+    char value[INI_MAX_LINE_LENGTH];
+    EXPECT_TRUE(ini_getValue(&ctx, "section", "key", value, sizeof(value)));
+    EXPECT_STREQ(value, "value");
+}
+
+TEST_F(IniParserTest, MaxLineLengthHandling)
+{
+    std::string long_line(INI_MAX_LINE_LENGTH * 2, 'a');
+    std::string content = "[section]\n" + long_line + "\n";
+    ASSERT_TRUE(ini_initialize(&ctx, content.c_str(), content.size()));
+}
+
+TEST_F(IniParserTest, MemorySafetyOnInvalidInput)
+{
+    const char *content = "[section\nkey=value"; // Missing ] and unterminated quote
+    ini_context_t ctx;
+    EXPECT_FALSE(ini_initialize(&ctx, content, strlen(content)));
+    // Safe to call multiple times
+    ini_cleanup(&ctx);
+    ini_cleanup(&ctx); // Double call test
+    ini_cleanup(&ctx); // Triple call test
+}
+
 TEST_F(IniParserTest, ComprehensiveParsing)
 {
     const char *content = R"INI(

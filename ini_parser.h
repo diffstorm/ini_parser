@@ -225,6 +225,8 @@ bool ini_initialize(ini_context_t *ctx, const char *content, size_t length)
         return false;
     }
 
+    ctx->content = NULL;
+    ctx->sections = NULL;
     ctx->content = calloc(1, length + 1);
 
     if(!ctx->content)
@@ -238,6 +240,7 @@ bool ini_initialize(ini_context_t *ctx, const char *content, size_t length)
     ini_section_t *currentSection = NULL;
     char line[INI_MAX_LINE_LENGTH];
     const char *ptr = ctx->content;
+    bool has_valid_entries = false;
 
     while(*ptr)
     {
@@ -294,6 +297,7 @@ bool ini_initialize(ini_context_t *ctx, const char *content, size_t length)
             }
 
             currentSection = newSection;
+            has_valid_entries = true;
         }
         else if(type == INI_LINE_KEY_VALUE && currentSection)
         {
@@ -326,12 +330,20 @@ bool ini_initialize(ini_context_t *ctx, const char *content, size_t length)
 
                 last->next = newKv;
             }
+
+            has_valid_entries = true;
         }
 
         if(*ptr)
         {
             ptr++;
         }
+    }
+
+    if(!has_valid_entries)
+    {
+        ini_cleanup(ctx);
+        return false;
     }
 
     return true;
@@ -344,23 +356,28 @@ void ini_cleanup(ini_context_t *ctx)
         return;
     }
 
-    free(ctx->content);
+    if(ctx->content)
+    {
+        free(ctx->content);
+        ctx->content = NULL;
+    }
+
     ini_section_t *section = ctx->sections;
 
     while(section)
     {
-        ini_section_t *nextSection = section->next;
+        ini_section_t *next_section = section->next;
         ini_keyvalue_t *kv = section->keyValues;
 
         while(kv)
         {
-            ini_keyvalue_t *nextKv = kv->next;
+            ini_keyvalue_t *next_kv = kv->next;
             free(kv);
-            kv = nextKv;
+            kv = next_kv;
         }
 
         free(section);
-        section = nextSection;
+        section = next_section;
     }
 
     ctx->sections = NULL;
