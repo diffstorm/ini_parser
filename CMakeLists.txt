@@ -33,9 +33,15 @@ add_executable(demo_cpp
     demo.cpp
 )
 
+# C++17 demo
+add_executable(demo_stream
+    demo_stream.cpp
+)
+
 # Link demo to library
 target_link_libraries(demo PRIVATE ini_parser)
 target_link_libraries(demo_cpp PRIVATE ini_parser)
+target_link_libraries(demo_stream PRIVATE ini_parser)
 
 # Google Test configuration
 find_package(GTest REQUIRED)

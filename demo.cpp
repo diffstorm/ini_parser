@@ -9,9 +9,9 @@
     @url github.com/diffstorm
     @license MIT License
 */
+#include "ini_parser.h"
 #include <iostream>
 #include <cstring>
-#include "ini_parser.h"
 
 int main()
 {

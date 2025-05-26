@@ -41,6 +41,10 @@ jobs:
       working-directory: ./build
       run: ./demo_cpp
 
+    - name: Run C++ streaming demo
+      working-directory: ./build
+      run: ./demo_stream
+
     - name: Compare demo outputs
       working-directory: ./build
       run: |
