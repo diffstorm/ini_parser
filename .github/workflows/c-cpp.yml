@@ -23,7 +23,7 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential cmake lcov
-        sudo apt-get install -y libgtest-dev googletest
+        sudo apt-get install -y libgtest-dev googletest valgrind
 
     - name: Configure CMake
       run: |
@@ -73,26 +73,10 @@ jobs:
         file: coverage.info
         fail_ci_if_error: false
 
-  valgrind:
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install Valgrind
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake lcov
-        sudo apt-get install -y libgtest-dev googletest valgrind
-        
-    - name: Build Debug version
-      run: |
-        cmake -B build-debug -DCMAKE_BUILD_TYPE=Debug
-        cmake --build build-debug --target ini_parser_tests
-        
     - name: Valgrind memory check
+      working-directory: ./build
       run: |
         valgrind --leak-check=full \
                  --track-origins=yes \
                  --error-exitcode=1 \
-                 ./build-debug/ini_parser_tests
+                 ./ini_parser_tests
