@@ -74,7 +74,7 @@ jobs:
         fail_ci_if_error: false
 
   valgrind:
-    needs: build
+    needs: build-and-test
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
